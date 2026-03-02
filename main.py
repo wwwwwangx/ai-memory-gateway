@@ -649,6 +649,7 @@ async def manage_memories_page():
     .id-col { width: 40px; }
     .imp-col { width: 60px; }
     .source-col { width: 90px; font-size: 12px; color: #888; }
+    .time-col { width: 140px; font-size: 12px; color: #888; white-space: nowrap; }
     .actions-col { width: 120px; }
 </style></head><body>
 <h2>🧠 记忆管理</h2>
@@ -656,6 +657,8 @@ async def manage_memories_page():
 
 <div class="toolbar">
     <input type="text" id="searchBox" placeholder="搜索记忆..." oninput="filterAndSort()">
+    <input type="date" id="dateFilter" onchange="filterAndSort()" style="padding:7px 10px;font-size:14px;border:1px solid #ddd;border-radius:4px;" title="按日期筛选">
+    <button class="btn-gray" onclick="document.getElementById('dateFilter').value='';filterAndSort()" style="padding:7px 10px;font-size:12px;" title="清除日期">✕</button>
     <select id="sortSelect" onchange="filterAndSort()" style="padding:8px 12px;font-size:14px;border:1px solid #ddd;border-radius:4px;">
         <option value="id-desc">ID 从新到旧</option>
         <option value="id-asc">ID 从旧到新</option>
@@ -676,6 +679,7 @@ async def manage_memories_page():
         <th>内容</th>
         <th class="imp-col">权重</th>
         <th class="source-col">来源</th>
+        <th class="time-col">时间</th>
         <th class="actions-col">操作</th>
     </tr></thead>
     <tbody id="tbody"></tbody>
@@ -695,6 +699,8 @@ async function loadMemories() {
     } catch(e) { showMsg('err', '加载失败：' + e.message); }
 }
 
+function fmtTime(s) { if (!s) return '-'; return s.slice(0, 19).replace('T', ' '); }
+
 function renderTable(mems) {
     const tbody = document.getElementById('tbody');
     tbody.innerHTML = mems.map(m => '<tr data-id="' + m.id + '">' +
@@ -703,6 +709,7 @@ function renderTable(mems) {
         '<td class="content-cell"><textarea class="content-input" id="c_' + m.id + '">' + escHtml(m.content) + '</textarea></td>' +
         '<td><input type="number" class="importance-input" id="i_' + m.id + '" value="' + m.importance + '" min="1" max="10"></td>' +
         '<td class="source-col">' + (m.source_session || '-') + '</td>' +
+        '<td class="time-col">' + fmtTime(m.created_at) + '</td>' +
         '<td class="actions"><button class="btn-green" onclick="saveMem(' + m.id + ')">保存</button><button class="btn-red" onclick="delMem(' + m.id + ')">删除</button></td>' +
         '</tr>').join('');
 }
@@ -712,9 +719,13 @@ function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replac
 function filterAndSort() {
     const q = document.getElementById('searchBox').value.trim().toLowerCase();
     const sort = document.getElementById('sortSelect').value;
+    const dateVal = document.getElementById('dateFilter').value;
     let mems = allMemories;
     if (q) {
         mems = mems.filter(m => m.content.toLowerCase().includes(q));
+    }
+    if (dateVal) {
+        mems = mems.filter(m => m.created_at && m.created_at.slice(0, 10) === dateVal);
     }
     mems = [...mems].sort((a, b) => {
         if (sort === 'id-desc') return b.id - a.id;
@@ -724,7 +735,14 @@ function filterAndSort() {
         return 0;
     });
     renderTable(mems);
-    if (q) document.getElementById('stats').textContent = '搜索到 ' + mems.length + ' / ' + allMemories.length + ' 条';
+    const parts = [];
+    if (q || dateVal) {
+        parts.push('筛选到 ' + mems.length + ' / ' + allMemories.length + ' 条');
+        if (dateVal) parts.push('日期: ' + dateVal);
+    } else {
+        parts.push('共 ' + allMemories.length + ' 条记忆');
+    }
+    document.getElementById('stats').textContent = parts.join('  ');
 }
 
 async function saveMem(id) {
