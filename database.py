@@ -19,6 +19,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 WEIGHT_KEYWORD = float(os.getenv("WEIGHT_KEYWORD", "0.5"))
 WEIGHT_IMPORTANCE = float(os.getenv("WEIGHT_IMPORTANCE", "0.3"))
 WEIGHT_RECENCY = float(os.getenv("WEIGHT_RECENCY", "0.2"))
+MIN_SCORE_THRESHOLD = float(os.getenv("MIN_SCORE_THRESHOLD", "0.15"))
 
 
 # ============================================================
@@ -253,8 +254,16 @@ async def search_memories(query: str, limit: int = 10):
         
         results = await conn.fetch(sql, *params)
         
+        # 过滤低分记忆
+        if MIN_SCORE_THRESHOLD > 0:
+            before_count = len(results)
+            results = [r for r in results if r['score'] >= MIN_SCORE_THRESHOLD]
+            filtered = before_count - len(results)
+        else:
+            filtered = 0
+        
         if results:
-            print(f"🔍 搜索 '{query}' → 关键词 {keywords[:8]}{'...' if len(keywords)>8 else ''} → 命中 {len(results)} 条")
+            print(f"🔍 搜索 '{query}' → 关键词 {keywords[:8]}{'...' if len(keywords)>8 else ''} → 命中 {len(results)} 条" + (f"（过滤 {filtered} 条低分）" if filtered else ""))
             for r in results[:3]:
                 print(f"   📌 [score={r['score']:.3f}] (hits={r['hit_count']}, imp={r['importance']}) {r['content'][:60]}...")
             
@@ -264,7 +273,7 @@ async def search_memories(query: str, limit: int = 10):
                 ids,
             )
         else:
-            print(f"🔍 搜索 '{query}' → 关键词 {keywords[:8]} → 无结果")
+            print(f"🔍 搜索 '{query}' → 关键词 {keywords[:8]} → 无结果" + (f"（{filtered} 条被分数阈值过滤）" if filtered else ""))
         
         return results
 

@@ -409,23 +409,32 @@ async def chat_completions(request: Request):
 
 
 async def stream_and_capture(headers: dict, body: dict, session_id: str, user_message: str, model: str, original_messages: list = None):
-    """流式响应 + 捕获完整回复"""
+    """流式响应 + 捕获完整回复（原始字节透传，确保SSE格式和thinking数据完整）"""
     full_response = []
+    line_buffer = ""
     
     async with httpx.AsyncClient(timeout=300) as client:
         async with client.stream("POST", API_BASE_URL, headers=headers, json=body) as response:
-            async for line in response.aiter_lines():
-                # 透传所有行（包括空行），保持SSE格式完整
-                yield line + "\n"
-                if line.startswith("data: ") and line != "data: [DONE]":
-                    try:
-                        data = json.loads(line[6:])
-                        delta = data.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            full_response.append(content)
-                    except (json.JSONDecodeError, KeyError, IndexError):
-                        pass
+            async for chunk in response.aiter_bytes():
+                # 原始字节直接透传给客户端
+                # 不做任何行分割处理，保持SSE格式和thinking数据完整
+                yield chunk
+                
+                # 旁路解析：从字节流中提取assistant回复内容，用于后续记忆提取
+                text = chunk.decode("utf-8", errors="ignore")
+                line_buffer += text
+                while "\n" in line_buffer:
+                    line, line_buffer = line_buffer.split("\n", 1)
+                    line = line.strip()
+                    if line.startswith("data: ") and line != "data: [DONE]":
+                        try:
+                            data = json.loads(line[6:])
+                            delta = data.get("choices", [{}])[0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                full_response.append(content)
+                        except (json.JSONDecodeError, KeyError, IndexError):
+                            pass
     
     assistant_msg = "".join(full_response)
     if MEMORY_ENABLED and user_message and assistant_msg:
