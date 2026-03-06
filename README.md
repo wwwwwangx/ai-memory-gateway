@@ -59,7 +59,7 @@ Give your AI long-term memory. A lightweight proxy gateway that adds a memory la
 |---------|------|------|
 | `API_KEY` | 你的 LLM API Key | `sk-or-v1-xxxx`（OpenRouter）|
 | `API_BASE_URL` | LLM API 地址 | `https://openrouter.ai/api/v1/chat/completions` |
-| `DEFAULT_MODEL` | 默认模型 | `anthropic/claude-sonnet-4` |
+| `DEFAULT_MODEL` | 默认模型 | `anthropic/claude-sonnet-4.5` |
 | `PORT` | 端口 | `8000` |
 
 5. 部署，访问你的网关地址看到 `{"status":"running"}` 就成功了
@@ -89,7 +89,7 @@ Give your AI long-term memory. A lightweight proxy gateway that adds a memory la
 |---------|------|------|
 | `DATABASE_URL` | PostgreSQL 连接字符串 | `postgresql://user:pass@host:port/db` |
 | `MEMORY_ENABLED` | 开启记忆 | `true` |
-| `MEMORY_MODEL` | 提取记忆用的模型（推荐便宜的小模型） | `anthropic/claude-haiku-4` |
+| `MEMORY_MODEL` | 提取记忆用的模型（推荐便宜的小模型） | `anthropic/claude-haiku-4.5` |
 | `MAX_MEMORIES_INJECT` | 每次注入的最大记忆条数 | `15` |
 | `MIN_SCORE_THRESHOLD` | 记忆搜索最低分数阈值，低于此分数的记忆不注入（0=不过滤） | `0.15` |
 | `MEMORY_EXTRACT_INTERVAL` | 记忆提取间隔（0=禁用/1=每轮/N=每N轮） | `1` |
