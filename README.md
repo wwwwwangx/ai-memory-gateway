@@ -59,7 +59,7 @@ Give your AI long-term memory. A lightweight proxy gateway that adds a memory la
 |---------|------|------|
 | `API_KEY` | 你的 LLM API Key | `sk-or-v1-xxxx`（OpenRouter）|
 | `API_BASE_URL` | LLM API 地址 | `https://openrouter.ai/api/v1/chat/completions` |
-| `DEFAULT_MODEL` | 默认模型 | `anthropic/claude-sonnet-4` |
+| `DEFAULT_MODEL` | 默认模型 | `anthropic/claude-sonnet-4.5` |
 | `PORT` | 端口 | `8000` |
 
 5. 部署，访问你的网关地址看到 `{"status":"running"}` 就成功了
@@ -89,7 +89,7 @@ Give your AI long-term memory. A lightweight proxy gateway that adds a memory la
 |---------|------|------|
 | `DATABASE_URL` | PostgreSQL 连接字符串 | `postgresql://user:pass@host:port/db` |
 | `MEMORY_ENABLED` | 开启记忆 | `true` |
-| `MEMORY_MODEL` | 提取记忆用的模型（推荐便宜的小模型） | `anthropic/claude-haiku-4` |
+| `MEMORY_MODEL` | 提取记忆用的模型（推荐便宜的小模型） | `anthropic/claude-haiku-4.5` |
 | `MAX_MEMORIES_INJECT` | 每次注入的最大记忆条数 | `15` |
 | `MIN_SCORE_THRESHOLD` | 记忆搜索最低分数阈值，低于此分数的记忆不注入（0=不过滤） | `0.15` |
 | `MEMORY_EXTRACT_INTERVAL` | 记忆提取间隔（0=禁用/1=每轮/N=每N轮） | `1` |
@@ -180,7 +180,7 @@ ai-memory-gateway/
 A: 检查端口设置。Render 默认用 `PORT` 环境变量，确保设置为 `8000`（和 Dockerfile 里一致）。如果用其他平台，注意端口是否匹配。
 
 **Q: 数据库连接失败？**
-A: 如果数据库和网关不在同一个平台，连接字符串末尾需要加 `?sslmode=require`。
+A: 如果数据库和网关不在同一个平台，连接字符串末尾可能需要加 `?sslmode=require`。
 
 **Q: 记忆会越来越多影响性能吗？**
 A: 每次最多注入 15 条记忆（可调），不会无限增长地消耗 token。提取记忆时会用客户端发来的完整上下文，token 用量比单轮提取大一些，可以通过 `MEMORY_EXTRACT_INTERVAL` 降低提取频率来控制成本。
