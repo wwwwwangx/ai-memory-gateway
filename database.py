@@ -65,6 +65,7 @@ async def init_tables():
             );
         """)
         
+            await conn.execute("""
         CREATE TABLE IF NOT EXISTS memories (
     id SERIAL PRIMARY KEY,
     
