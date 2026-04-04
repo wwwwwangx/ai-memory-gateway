@@ -65,17 +65,62 @@ async def init_tables():
             );
         """)
         
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS memories (
-                id              SERIAL PRIMARY KEY,
-                content         TEXT NOT NULL,
-                importance      INTEGER DEFAULT 5,
-                source_session  TEXT,
-                created_at      TIMESTAMPTZ DEFAULT NOW(),
-                last_accessed   TIMESTAMPTZ DEFAULT NOW()
-            );
+        CREATE TABLE IF NOT EXISTS memories (
+    id SERIAL PRIMARY KEY,
+    
+    content TEXT NOT NULL,
+    
+    type TEXT DEFAULT 'atomic',
+    
+    status TEXT DEFAULT 'active',
+    
+    importance INTEGER DEFAULT 5,
+    
+    source_session TEXT,
+    
+    event_time TIMESTAMPTZ,
+    
+    is_completed BOOLEAN DEFAULT FALSE,
+    
+    supersedes_id INTEGER,
+    
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    last_accessed TIMESTAMPTZ DEFAULT NOW()
+);
         """)
         
+        await conn.execute("""
+    ALTER TABLE memories
+    ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'atomic';
+""")
+
+await conn.execute("""
+    ALTER TABLE memories
+    ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+""")
+
+await conn.execute("""
+    ALTER TABLE memories
+    ADD COLUMN IF NOT EXISTS event_time TIMESTAMPTZ;
+""")
+
+await conn.execute("""
+    ALTER TABLE memories
+    ADD COLUMN IF NOT EXISTS is_completed BOOLEAN DEFAULT FALSE;
+""")
+
+await conn.execute("""
+    ALTER TABLE memories
+    ADD COLUMN IF NOT EXISTS supersedes_id INTEGER;
+""")
+
+await conn.execute("""
+    ALTER TABLE memories
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+""")
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_memories_fts 
             ON memories 
