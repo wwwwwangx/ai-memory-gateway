@@ -93,7 +93,7 @@ async def init_tables():
 );
         """)
         
-        await conn.execute("""
+await conn.execute("""
     ALTER TABLE memories
     ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'atomic';
 """)
@@ -122,13 +122,13 @@ await conn.execute("""
     ALTER TABLE memories
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 """)
-        await conn.execute("""
+await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_memories_fts 
             ON memories 
             USING gin(to_tsvector('simple', content));
         """)
         
-        await conn.execute("""
+await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_conversations_session 
             ON conversations (session_id, created_at);
         """)
