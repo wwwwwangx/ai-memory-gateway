@@ -2,7 +2,6 @@ import os
 import re
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
-from difflib import SequenceMatcher
 
 import asyncpg
 import jieba
@@ -10,13 +9,11 @@ import jieba.analyse
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-# 召回配置
 MAX_CONTEXT_MEMORIES = int(os.getenv("MAX_CONTEXT_MEMORIES", "15"))
 TOP_K = 3
 HIGH_IMPORTANCE_THRESHOLD = 7
 HIGH_IMPORTANCE_LIMIT = 5
 
-# 分词初始化
 jieba.setLogLevel(jieba.logging.INFO)
 
 EN_WORD_PATTERN = re.compile(r'[a-zA-Z][a-zA-Z0-9]*')
@@ -39,7 +36,6 @@ _STOP_WORDS = frozenset({
 
 _pool: Optional[asyncpg.Pool] = None
 
-# ========== 连接池 ==========
 async def get_pool() -> asyncpg.Pool:
     global _pool
     if _pool is None:
@@ -56,11 +52,9 @@ async def close_pool():
         _pool = None
         print("✅ 数据库连接池已关闭")
 
-# ========== 表初始化（升级版，增加必要字段和索引） ==========
 async def init_tables():
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # 对话表
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS conversations (
                 id              SERIAL PRIMARY KEY,
@@ -71,7 +65,6 @@ async def init_tables():
                 created_at      TIMESTAMPTZ DEFAULT NOW()
             );
         """)
-        # 记忆表（添加 type, status, is_completed 字段）
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS memories (
                 id              SERIAL PRIMARY KEY,
@@ -86,13 +79,11 @@ async def init_tables():
                 last_accessed   TIMESTAMPTZ DEFAULT NOW()
             );
         """)
-        # 补充缺失字段（兼容旧表）
         await conn.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'atomic';")
         await conn.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';")
         await conn.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS is_completed BOOLEAN DEFAULT FALSE;")
         await conn.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();")
         await conn.execute("ALTER TABLE memories ADD COLUMN IF NOT EXISTS last_accessed TIMESTAMPTZ DEFAULT NOW();")
-        # 索引
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_memories_fts 
             ON memories USING gin(to_tsvector('simple', content));
@@ -106,7 +97,6 @@ async def init_tables():
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_completed ON memories (is_completed);")
     print("✅ 数据库表结构初始化完成")
 
-# ========== 中文分词 ==========
 def extract_search_keywords(query: str) -> List[str]:
     keywords = set()
     for match in EN_WORD_PATTERN.finditer(query):
@@ -127,7 +117,6 @@ def extract_search_keywords(query: str) -> List[str]:
         keywords.add(word)
     return list(keywords)
 
-# ========== 对话操作 ==========
 async def save_message(session_id: str, role: str, content: str, model: str = ""):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -145,7 +134,6 @@ async def get_recent_messages(session_id: str, limit: int = 20):
         )
         return list(reversed(rows))
 
-# ========== 记忆保存（简化版，但支持新字段） ==========
 async def save_memory(content: str, importance: int = 5, source_session: str = "", 
                       mem_type: str = "atomic", is_completed: bool = False):
     pool = await get_pool()
@@ -158,16 +146,7 @@ async def save_memory(content: str, importance: int = 5, source_session: str = "
             content, importance, source_session, mem_type, is_completed,
         )
 
-# ========== 核心召回逻辑 ==========
 async def get_memories_for_context(session_id: str, user_query: str, limit: int = MAX_CONTEXT_MEMORIES) -> List[Dict]:
-    """
-    返回注入上下文的记忆列表：
-    - 只取 status='active'
-    - Top3 相关记忆（基于用户查询的全文搜索）
-    - 高重要性记忆 (importance >= 7) 最多5条
-    - 未完成的计划 (type='plan' and is_completed=false)
-    - 合并去重，按重要性+新鲜度排序，截断
-    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         top3 = []
@@ -189,7 +168,6 @@ async def get_memories_for_context(session_id: str, user_query: str, limit: int 
                 )
                 top3 = [dict(r) for r in rows]
         
-        # 高重要性记忆
         high_imp = await conn.fetch(
             """
             SELECT id, content, importance, created_at, type, is_completed
@@ -202,7 +180,6 @@ async def get_memories_for_context(session_id: str, user_query: str, limit: int 
         )
         high_imp = [dict(r) for r in high_imp]
         
-        # 未完成的计划
         plans = await conn.fetch(
             """
             SELECT id, content, importance, created_at, type, is_completed
@@ -213,20 +190,16 @@ async def get_memories_for_context(session_id: str, user_query: str, limit: int 
         )
         plans = [dict(r) for r in plans]
         
-        # 合并去重（按 id）
         merged = {}
         for m in top3 + high_imp + plans:
             if m["id"] not in merged:
                 merged[m["id"]] = m
         
         result = list(merged.values())
-        # 排序：重要性优先，其次新鲜度
         result.sort(key=lambda x: (x["importance"], x["created_at"]), reverse=True)
         return result[:limit]
 
-# 为了兼容旧代码，保留 search_memories 但改为调用新逻辑（也可返回空，但建议用上面的函数）
 async def search_memories(query: str, limit: int = 10):
-    """兼容旧接口，返回基于查询的相关记忆（仅 active）"""
     if not query:
         return []
     pool = await get_pool()
@@ -249,7 +222,6 @@ async def search_memories(query: str, limit: int = 10):
         )
         return [dict(r) for r in rows]
 
-# ========== 辅助函数 ==========
 async def get_all_memories():
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -263,6 +235,14 @@ async def get_all_memories_count():
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT COUNT(*) as cnt FROM memories")
         return row["cnt"]
+
+async def get_all_memories_detail():
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, content, importance, source_session, created_at, type, status, is_completed FROM memories ORDER BY id"
+        )
+        return [dict(r) for r in rows]
 
 async def get_recent_memories(limit: int = 20):
     pool = await get_pool()
