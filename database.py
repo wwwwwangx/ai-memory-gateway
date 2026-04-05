@@ -147,27 +147,35 @@ async def save_memory(content: str, importance: int = 5, source_session: str = "
         )
 
 async def get_memories_for_context(session_id: str, user_query: str, limit: int = MAX_CONTEXT_MEMORIES) -> List[Dict]:
+    """
+    返回注入上下文的记忆列表（使用 ILIKE 模糊匹配，确保中文能搜到）
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # 1. 基于用户查询的 Top3（使用 ILIKE）
         top3 = []
         if user_query:
             keywords = extract_search_keywords(user_query)
             if keywords:
-                ts_query = " & ".join(keywords)
-                rows = await conn.fetch(
-                    """
+                # 构建 ILIKE 条件：只要 content 包含任一关键词即可
+                like_conditions = []
+                params = []
+                for i, kw in enumerate(keywords):
+                    like_conditions.append(f"content ILIKE '%' || ${i+1} || '%'")
+                    params.append(kw)
+                where_clause = " OR ".join(like_conditions)
+                query_sql = f"""
                     SELECT id, content, importance, created_at, type, is_completed
                     FROM memories
-                    WHERE status = 'active' 
-                      AND to_tsvector('simple', content) @@ to_tsquery('simple', $1)
-                    ORDER BY ts_rank(to_tsvector('simple', content), to_tsquery('simple', $1)) DESC,
-                             importance DESC, created_at DESC
-                    LIMIT $2
-                    """,
-                    ts_query, TOP_K
-                )
+                    WHERE status = 'active' AND ({where_clause})
+                    ORDER BY importance DESC, created_at DESC
+                    LIMIT $1
+                """
+                params.append(TOP_K)
+                rows = await conn.fetch(query_sql, *params)
                 top3 = [dict(r) for r in rows]
         
+        # 2. 高重要性记忆
         high_imp = await conn.fetch(
             """
             SELECT id, content, importance, created_at, type, is_completed
@@ -180,6 +188,7 @@ async def get_memories_for_context(session_id: str, user_query: str, limit: int 
         )
         high_imp = [dict(r) for r in high_imp]
         
+        # 3. 未完成的计划
         plans = await conn.fetch(
             """
             SELECT id, content, importance, created_at, type, is_completed
@@ -190,6 +199,7 @@ async def get_memories_for_context(session_id: str, user_query: str, limit: int 
         )
         plans = [dict(r) for r in plans]
         
+        # 合并去重
         merged = {}
         for m in top3 + high_imp + plans:
             if m["id"] not in merged:
@@ -199,6 +209,7 @@ async def get_memories_for_context(session_id: str, user_query: str, limit: int 
         result.sort(key=lambda x: (x["importance"], x["created_at"]), reverse=True)
         return result[:limit]
 
+# 兼容旧接口
 async def search_memories(query: str, limit: int = 10):
     if not query:
         return []
@@ -207,19 +218,21 @@ async def search_memories(query: str, limit: int = 10):
         keywords = extract_search_keywords(query)
         if not keywords:
             return []
-        ts_query = " & ".join(keywords)
-        rows = await conn.fetch(
-            """
-            SELECT id, content, importance, created_at,
-                   ts_rank(to_tsvector('simple', content), to_tsquery('simple', $1)) AS rank
+        like_conditions = []
+        params = []
+        for i, kw in enumerate(keywords):
+            like_conditions.append(f"content ILIKE '%' || ${i+1} || '%'")
+            params.append(kw)
+        where_clause = " OR ".join(like_conditions)
+        params.append(limit)
+        sql = f"""
+            SELECT id, content, importance, created_at
             FROM memories
-            WHERE status = 'active' 
-              AND to_tsvector('simple', content) @@ to_tsquery('simple', $1)
-            ORDER BY rank DESC, importance DESC, created_at DESC
-            LIMIT $2
-            """,
-            ts_query, limit
-        )
+            WHERE status = 'active' AND ({where_clause})
+            ORDER BY importance DESC, created_at DESC
+            LIMIT ${len(params)}
+        """
+        rows = await conn.fetch(sql, *params)
         return [dict(r) for r in rows]
 
 async def get_all_memories():
