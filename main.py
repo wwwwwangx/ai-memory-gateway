@@ -247,7 +247,7 @@ async def chat_completions(request: Request):
     original_messages = [msg for msg in messages if msg.get("role") != "system"]
     
     if SYSTEM_PROMPT or (MEMORY_ENABLED and user_message):
-        if MEMORY_ENABLED and user_message:
+    if MEMORY_ENABLED and user_message:
             enhanced_prompt = await build_system_prompt_with_memories(user_message)
         else:
             enhanced_prompt = SYSTEM_PROMPT
