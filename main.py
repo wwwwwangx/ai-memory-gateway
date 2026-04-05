@@ -269,7 +269,26 @@ async def chat_completions(request: Request):
             break
     else:
         print("⚠️ 警告：最终 messages 中没有 system 角色！")
-    
+      # ===== 重建 messages（关键修复）=====
+      original_chat_history = [msg for msg in messages if msg.get("role") != "system"]
+
+     enhanced_prompt = SYSTEM_PROMPT
+     if MEMORY_ENABLED and user_message:
+     enhanced_prompt = await build_system_prompt_with_memories(user_message)
+
+     new_messages = []
+
+     if enhanced_prompt:
+     new_messages.append({
+        "role": "system",
+        "content": enhanced_prompt
+     })
+
+     new_messages.extend(original_chat_history)
+
+     messages = new_messages
+     # ===== 修复结束 =====
+
     body["messages"] = messages
     model = body.get("model", DEFAULT_MODEL)
     body["model"] = model
