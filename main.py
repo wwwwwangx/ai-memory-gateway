@@ -323,25 +323,42 @@ async def stream_and_capture(headers, body, session_id, user_message, model, ori
     line_buffer = ""
     async with httpx.AsyncClient(timeout=300) as client:
         async with client.stream("POST", API_BASE_URL, headers=headers, json=body) as response:
-            async for chunk in response.aiter_bytes():
-                yield chunk
-                text = chunk.decode("utf-8", errors="ignore")
-                line_buffer += text
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+
+                # 立即 yield 原始行，保证前端实时收到数据
+                yield (line + "\n").encode("utf-8")
+
+                # 累积用于记忆解析
+                text = line
+                line_buffer += text + "\n"
+
                 while "\n" in line_buffer:
-                    line, line_buffer = line_buffer.split("\n", 1)
-                    line = line.strip()
-                    if line.startswith("data: ") and line != "data: [DONE]":
+                    line_part, line_buffer = line_buffer.split("\n", 1)
+                    line_part = line_part.strip()
+                    if line_part.startswith("data: ") and line_part != "data: [DONE]":
                         try:
-                            data = json.loads(line[6:])
+                            data = json.loads(line_part[6:])
                             delta = data.get("choices", [{}])[0].get("delta", {})
                             content = delta.get("content", "")
                             if content:
                                 full_response.append(content)
                         except:
                             pass
+
+    # 流结束后保存记忆
     assistant_msg = "".join(full_response)
     if MEMORY_ENABLED and user_message and assistant_msg:
-        asyncio.create_task(process_memories_background(session_id, user_message, assistant_msg, model, context_messages=original_non_system))
+        asyncio.create_task(
+            process_memories_background(
+                session_id,
+                user_message,
+                assistant_msg,
+                model,
+                context_messages=original_non_system
+            )
+        )
 
 
 # 管理接口
