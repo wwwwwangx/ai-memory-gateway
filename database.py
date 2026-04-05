@@ -167,7 +167,7 @@ async def get_memories_for_context(session_id: str, user_query: str, limit: int 
                     ORDER BY importance DESC, created_at DESC
                     LIMIT $1
                 """
-                params.append(TOP_K)
+                params.append(int(TOP_K))
                 rows = await conn.fetch(query_sql, *params)
                 top3 = [dict(r) for r in rows]
         
@@ -180,7 +180,7 @@ async def get_memories_for_context(session_id: str, user_query: str, limit: int 
             ORDER BY importance DESC, created_at DESC
             LIMIT $2
             """,
-            HIGH_IMPORTANCE_THRESHOLD, HIGH_IMPORTANCE_LIMIT
+            int(HIGH_IMPORTANCE_THRESHOLD), int(HIGH_IMPORTANCE_LIMIT)
         )
         high_imp = [dict(r) for r in high_imp]
         
@@ -238,7 +238,7 @@ async def search_memories(query: str, limit: int = 10):
             like_conditions.append(f"content ILIKE '%' || ${i+1} || '%'")
             params.append(kw)
         where_clause = " OR ".join(like_conditions)
-        params.append(limit)
+        params.append(int(limit))
         sql = f"""
             SELECT id, content, importance, created_at
             FROM memories
