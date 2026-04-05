@@ -24,7 +24,12 @@ from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from database import init_tables, close_pool, save_message, search_memories, save_memory, get_all_memories_count, get_recent_memories, get_all_memories, get_pool, get_all_memories_detail, update_memory, delete_memory, delete_memories_batch
+from database import (
+    init_tables, close_pool, save_message, search_memories, save_memory,
+    get_all_memories_count, get_recent_memories, get_all_memories, get_pool,
+    get_all_memories_detail, update_memory, delete_memory, delete_memories_batch,
+    get_memories_for_context   # <-- 关键：导入正确的召回函数
+)
 from memory_extractor import extract_memories, score_memories
 
 # ============================================================
@@ -130,20 +135,21 @@ templates = Jinja2Templates(directory="templates")
 
 
 # ============================================================
-# 记忆注入
+# 记忆注入（使用 get_memories_for_context）
 # ============================================================
 
 async def build_system_prompt_with_memories(user_message: str) -> str:
     """
     构建带记忆的 system prompt
-    1. 用用户消息搜索相关记忆
+    1. 用用户消息搜索相关记忆（使用新的召回函数）
     2. 格式化成文本拼接到人设后面
     """
     if not MEMORY_ENABLED:
         return SYSTEM_PROMPT
     
     try:
-        memories = await search_memories(user_message, limit=MAX_MEMORIES_INJECT)
+        # 使用 get_memories_for_context，它已经实现了 Top3 + 高重要性 + 未完成计划 + 去重
+        memories = await get_memories_for_context("", user_message, limit=MAX_MEMORIES_INJECT)
         
         if not memories:
             return SYSTEM_PROMPT
