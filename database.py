@@ -147,17 +147,13 @@ async def save_memory(content: str, importance: int = 5, source_session: str = "
         )
 
 async def get_memories_for_context(session_id: str, user_query: str, limit: int = MAX_CONTEXT_MEMORIES) -> List[Dict]:
-    """
-    返回注入上下文的记忆列表（使用 ILIKE 模糊匹配，确保中文能搜到）
-    """
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # 1. 基于用户查询的 Top3（使用 ILIKE）
+        # 1. 关键词匹配 Top3
         top3 = []
         if user_query:
             keywords = extract_search_keywords(user_query)
             if keywords:
-                # 构建 ILIKE 条件：只要 content 包含任一关键词即可
                 like_conditions = []
                 params = []
                 for i, kw in enumerate(keywords):
@@ -167,7 +163,7 @@ async def get_memories_for_context(session_id: str, user_query: str, limit: int 
                 query_sql = f"""
                     SELECT id, content, importance, created_at, type, is_completed
                     FROM memories
-                    WHERE status = 'active' AND ({where_clause})
+                   WHERE status = 'active' AND is_completed = false AND ({where_clause})
                     ORDER BY importance DESC, created_at DESC
                     LIMIT $1
                 """
@@ -180,7 +176,7 @@ async def get_memories_for_context(session_id: str, user_query: str, limit: int 
             """
             SELECT id, content, importance, created_at, type, is_completed
             FROM memories
-            WHERE status = 'active' AND importance >= $1
+            WHERE status = 'active' AND is_completed = false AND importance >= $1
             ORDER BY importance DESC, created_at DESC
             LIMIT $2
             """,
@@ -199,9 +195,27 @@ async def get_memories_for_context(session_id: str, user_query: str, limit: int 
         )
         plans = [dict(r) for r in plans]
         
+        # 4. 偏好意图额外检索（关键！）
+        extra_memories = []
+        preference_keywords = ["喜欢", "爱吃", "偏好", "习惯", "水果", "食物", "饮料", "菜", "口味"]
+        if any(kw in user_query for kw in preference_keywords):
+            extra = await conn.fetch(
+                """
+                SELECT id, content, importance, created_at, type, is_completed
+                FROM memories
+                WHERE status = 'active' AND is_completed = false
+                  AND (content ILIKE '%喜欢%' OR content ILIKE '%爱吃%' OR content ILIKE '%偏好%')
+                ORDER BY importance DESC, created_at DESC
+                LIMIT 10
+                """
+            )
+            extra_memories = [dict(r) for r in extra]
+            if extra_memories:
+                print(f"🍎 检测到偏好类问题，额外添加 {len(extra_memories)} 条相关记忆")
+        
         # 合并去重
         merged = {}
-        for m in top3 + high_imp + plans:
+        for m in top3 + high_imp + plans + extra_memories:
             if m["id"] not in merged:
                 merged[m["id"]] = m
         
@@ -228,7 +242,7 @@ async def search_memories(query: str, limit: int = 10):
         sql = f"""
             SELECT id, content, importance, created_at
             FROM memories
-            WHERE status = 'active' AND ({where_clause})
+            WHERE status = 'active' AND is_completed = false AND ({where_clause})
             ORDER BY importance DESC, created_at DESC
             LIMIT ${len(params)}
         """
