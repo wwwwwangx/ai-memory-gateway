@@ -292,7 +292,7 @@ async def chat_completions(request: Request):
     body["messages"] = messages
     model = body.get("model", DEFAULT_MODEL)
     body["model"] = model
-    session_id = str(uuid.uuid4())[:8]
+    session_id = body.get("session_id") or "default"
     
     headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
     if "openrouter" in API_BASE_URL:
