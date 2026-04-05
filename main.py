@@ -323,23 +323,21 @@ async def stream_and_capture(headers, body, session_id, user_message, model, ori
     line_buffer = ""
     async with httpx.AsyncClient(timeout=300) as client:
         async with client.stream("POST", API_BASE_URL, headers=headers, json=body) as response:
-            async for line in response.aiter_lines():
-                if not line:
-                    continue
+            async for chunk in response.aiter_bytes():
+                # 1. 立即转发原始字节，保证前端实时收到
+                yield chunk
 
-                # 立即 yield 原始行，保证前端实时收到数据
-                yield (line + "\n").encode("utf-8")
+                # 2. 解码并累积到行缓冲区，用于提取完整消息内容（记忆用）
+                text = chunk.decode("utf-8", errors="ignore")
+                line_buffer += text
 
-                # 累积用于记忆解析
-                text = line
-                line_buffer += text + "\n"
-
+                # 3. 按行解析 SSE 数据，提取 content 字段
                 while "\n" in line_buffer:
-                    line_part, line_buffer = line_buffer.split("\n", 1)
-                    line_part = line_part.strip()
-                    if line_part.startswith("data: ") and line_part != "data: [DONE]":
+                    line, line_buffer = line_buffer.split("\n", 1)
+                    line = line.strip()
+                    if line.startswith("data: ") and line != "data: [DONE]":
                         try:
-                            data = json.loads(line_part[6:])
+                            data = json.loads(line[6:])
                             delta = data.get("choices", [{}])[0].get("delta", {})
                             content = delta.get("content", "")
                             if content:
@@ -347,7 +345,7 @@ async def stream_and_capture(headers, body, session_id, user_message, model, ori
                         except:
                             pass
 
-    # 流结束后保存记忆
+    # 4. 流结束后，将完整回复保存到记忆系统
     assistant_msg = "".join(full_response)
     if MEMORY_ENABLED and user_message and assistant_msg:
         asyncio.create_task(
