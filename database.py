@@ -153,28 +153,28 @@ async def get_memories_for_context(session_id: str, user_query: str, limit: int 
         top3 = []
         if user_query:
             keywords = extract_search_keywords(user_query)
-            if keywords:
-                              like_conditions = []
-                    params = []
+        if keywords:
+            like_conditions = []
+            params = []
 
-                for i, kw in enumerate(keywords):
-                    like_conditions.append(f"content ILIKE '%' || ${i+1} || '%'")
-                    params.append(kw)
+            for i, kw in enumerate(keywords):
+                like_conditions.append(f"content ILIKE '%' || ${i+1} || '%'")
+                params.append(kw)
 
-                    where_clause = " OR ".join(like_conditions)
-                    limit_placeholder = len(params) + 1
+            where_clause = " OR ".join(like_conditions)
+            limit_placeholder = len(params) + 1
 
-                query_sql = f"""
-                    SELECT id, content, importance, created_at, type, is_completed
-                    FROM memories
-                    WHERE status = 'active' AND is_completed = false AND ({where_clause})
-                    ORDER BY importance DESC, created_at DESC
-                    LIMIT ${limit_placeholder}
-                """
+            query_sql = f"""
+                SELECT id, content, importance, created_at, type, is_completed
+                FROM memories
+                WHERE status = 'active' AND is_completed = false AND ({where_clause})
+                ORDER BY importance DESC, created_at DESC
+                LIMIT ${limit_placeholder}
+            """
 
-                params.append(int(TOP_K))
-                rows = await conn.fetch(query_sql, *params)
-                top3 = [dict(r) for r in rows]
+            params.append(int(TOP_K))
+            rows = await conn.fetch(query_sql, *params)
+            top3 = [dict(r) for r in rows]
         
         # 2. 高重要性记忆
         high_imp = await conn.fetch(
